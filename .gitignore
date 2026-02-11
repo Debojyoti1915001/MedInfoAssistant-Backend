@@ -15,9 +15,6 @@
 # Go workspace file
 go.work
 
-# Dependencies
-go.sum
-
 # Environment variables
 .env
 .env.local
