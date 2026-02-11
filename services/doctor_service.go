@@ -90,6 +90,18 @@ func (s *DoctorService) GetAllDoctors(ctx context.Context) ([]*models.Doctor, er
 	return doctors, rows.Err()
 }
 
+// GetDoctorByUsername retrieves a doctor by username
+func (s *DoctorService) GetDoctorByUsername(ctx context.Context, username string) (*models.Doctor, error) {
+	doctor := &models.Doctor{}
+	err := s.db.QueryRow(ctx,
+		"SELECT id, created_at, accuracy, name, phnNumber, speciality, username, email, password FROM doctors WHERE username = $1",
+		username).Scan(&doctor.ID, &doctor.CreatedAt, &doctor.Accuracy, &doctor.Name, &doctor.PhnNumber, &doctor.Speciality, &doctor.Username, &doctor.Email, &doctor.Password)
+	if err != nil {
+		return nil, err
+	}
+	return doctor, nil
+}
+
 // LoginDoctor authenticates a doctor by email and password
 func (s *DoctorService) LoginDoctor(ctx context.Context, email, password string) (*models.Doctor, error) {
 	doctor := &models.Doctor{}

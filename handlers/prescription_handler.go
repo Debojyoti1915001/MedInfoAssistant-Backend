@@ -102,10 +102,10 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 		// Parse other form fields
 		symptoms := r.FormValue("symptoms")
 		userIDStr := r.FormValue("userId")
-		docIDStr := r.FormValue("docId")
+		doctorUsername := r.FormValue("doctorUsername")
 
-		if userIDStr == "" || docIDStr == "" {
-			http.Error(w, "userId and docId are required", http.StatusBadRequest)
+		if userIDStr == "" || doctorUsername == "" {
+			http.Error(w, "userId and doctorUsername are required", http.StatusBadRequest)
 			return
 		}
 
@@ -115,9 +115,11 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		docID, err := strconv.ParseInt(docIDStr, 10, 64)
+		// Get doctor ID by username
+		docService := services.NewDoctorService(db)
+		doctor, err := docService.GetDoctorByUsername(context.Background(), doctorUsername)
 		if err != nil {
-			http.Error(w, "invalid docId", http.StatusBadRequest)
+			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
 
@@ -125,7 +127,7 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			Symptoms: symptoms,
 			Link:     publicURL,
 			UserID:   userID,
-			DocID:    docID,
+			DocID:    doctor.ID,
 		}
 
 		presService := services.NewPrescriptionService(db)
