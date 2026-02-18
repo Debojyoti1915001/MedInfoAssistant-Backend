@@ -13,15 +13,8 @@ import (
 )
 
 func main() {
-	// Load .env file
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using environment variables")
-	}
-
-	// Get configuration
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is not set")
 	}
 
 	port := os.Getenv("PORT")
@@ -29,7 +22,11 @@ func main() {
 		port = "8080"
 	}
 
-	// Initialize database connection
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL is not set")
+	}
+
 	ctx := context.Background()
 	conn, err := database.InitDB(ctx, databaseURL)
 	if err != nil {
@@ -37,18 +34,16 @@ func main() {
 	}
 	defer conn.Close(ctx)
 
-	// Run database migrations
 	if err := database.RunMigrations(ctx, conn); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	log.Println("Database migrations completed successfully")
+	log.Println("Database ready")
 
-	// Register routes
 	routes.RegisterRoutes(conn)
 
-	// Start server
-	fmt.Printf("Server is running on http://localhost:%s\n", port)
+	log.Printf("Server is running on port %s\n", port)
+
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
