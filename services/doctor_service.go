@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/Debojyoti1915001/MedInfoAssistant-Backend/models"
 	"github.com/Debojyoti1915001/MedInfoAssistant-Backend/utils"
@@ -96,6 +97,24 @@ func (s *DoctorService) GetDoctorByUsername(ctx context.Context, username string
 	err := s.db.QueryRow(ctx,
 		"SELECT id, created_at, accuracy, name, phnNumber, speciality, username, email, password FROM doctors WHERE username = $1",
 		username).Scan(&doctor.ID, &doctor.CreatedAt, &doctor.Accuracy, &doctor.Name, &doctor.PhnNumber, &doctor.Speciality, &doctor.Username, &doctor.Email, &doctor.Password)
+	if err != nil {
+		return nil, err
+	}
+	return doctor, nil
+}
+
+// GetDoctorByIdentifier retrieves a doctor by username or email (case-insensitive).
+func (s *DoctorService) GetDoctorByIdentifier(ctx context.Context, identifier string) (*models.Doctor, error) {
+	normalized := strings.TrimSpace(identifier)
+	doctor := &models.Doctor{}
+	err := s.db.QueryRow(ctx,
+		`SELECT id, created_at, accuracy, name, phnNumber, speciality, username, email, password
+		 FROM doctors
+		 WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
+		    OR LOWER(TRIM(email)) = LOWER(TRIM($1))
+		 LIMIT 1`,
+		normalized,
+	).Scan(&doctor.ID, &doctor.CreatedAt, &doctor.Accuracy, &doctor.Name, &doctor.PhnNumber, &doctor.Speciality, &doctor.Username, &doctor.Email, &doctor.Password)
 	if err != nil {
 		return nil, err
 	}

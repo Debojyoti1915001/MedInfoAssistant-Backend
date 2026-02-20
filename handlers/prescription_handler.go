@@ -18,6 +18,67 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type createPrescriptionResponse struct {
+	Prescription *models.Prescription `json:"prescription"`
+	AIAnalysis   *models.AIResponse   `json:"aiAnalysis"`
+}
+
+func persistAIItems(ctx context.Context, db *pgx.Conn, presID int64, aiResp *models.AIResponse) error {
+	if aiResp == nil {
+		return nil
+	}
+
+	itemService := services.NewItemsService(db)
+
+	for testName, test := range aiResp.Tests {
+		name := test.Name
+		if name == "" {
+			name = testName
+		}
+
+		reasonsJSON, err := json.Marshal(test)
+		if err != nil {
+			return fmt.Errorf("failed to encode test reasons for %s: %w", name, err)
+		}
+
+		item := &models.Items{
+			PresID:    presID,
+			Name:      name,
+			Type:      "test",
+			AIReasons: string(reasonsJSON),
+			DocReason: "",
+		}
+		if err := itemService.CreateItem(ctx, item); err != nil {
+			return fmt.Errorf("failed to store test item %s: %w", name, err)
+		}
+	}
+
+	for medicineName, medicine := range aiResp.Medicines {
+		name := medicine.Name
+		if name == "" {
+			name = medicineName
+		}
+
+		reasonsJSON, err := json.Marshal(medicine)
+		if err != nil {
+			return fmt.Errorf("failed to encode medicine reasons for %s: %w", name, err)
+		}
+
+		item := &models.Items{
+			PresID:    presID,
+			Name:      name,
+			Type:      "med",
+			AIReasons: string(reasonsJSON),
+			DocReason: "",
+		}
+		if err := itemService.CreateItem(ctx, item); err != nil {
+			return fmt.Errorf("failed to store medicine item %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
 // CreatePrescriptionHandler creates a new prescription
 func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -102,9 +163,9 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 		// Parse other form fields
 		symptoms := r.FormValue("symptoms")
 		userIDStr := r.FormValue("userId")
-		doctorUsername := r.FormValue("doctorUsername")
+		doctorIdentifier := strings.TrimSpace(r.FormValue("doctorUsername"))
 
-		if userIDStr == "" || doctorUsername == "" {
+		if userIDStr == "" || doctorIdentifier == "" {
 			http.Error(w, "userId and doctorUsername are required", http.StatusBadRequest)
 			return
 		}
@@ -115,11 +176,17 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// Get doctor ID by username
+		// Resolve doctor by username or email.
 		docService := services.NewDoctorService(db)
-		doctor, err := docService.GetDoctorByUsername(context.Background(), doctorUsername)
+		doctor, err := docService.GetDoctorByIdentifier(context.Background(), doctorIdentifier)
 		if err != nil {
 			http.Error(w, "doctor not found", http.StatusNotFound)
+			return
+		}
+
+		aiResp, err := services.CallAIService(fileBytes, symptoms, doctor.Speciality)
+		if err != nil {
+			http.Error(w, "failed to analyze prescription: "+err.Error(), http.StatusBadGateway)
 			return
 		}
 
@@ -136,9 +203,17 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
+		if err := persistAIItems(context.Background(), db, prescription.ID, aiResp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(prescription)
+		json.NewEncoder(w).Encode(createPrescriptionResponse{
+			Prescription: prescription,
+			AIAnalysis:   aiResp,
+		})
 	}
 }
 
