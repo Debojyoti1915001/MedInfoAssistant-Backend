@@ -30,9 +30,11 @@ func RegisterRoutes(db *pgx.Conn) {
 	http.HandleFunc("/api/prescriptions", handlers.GetUserPrescriptionsHandler(db))
 	http.HandleFunc("/api/prescriptions/create", handlers.CreatePrescriptionHandler(db))
 	http.HandleFunc("/api/prescriptions/get", handlers.GetPrescriptionHandler(db))
+	http.HandleFunc("/api/prescriptions/with-items", handlers.GetUserPrescriptionsWithItemsHandler(db))
 
 	// Items routes
 	http.HandleFunc("/api/items", handlers.GetPrescriptionItemsHandler(db))
 	http.HandleFunc("/api/items/create", handlers.CreateItemHandler(db))
 	http.HandleFunc("/api/items/get", handlers.GetItemHandler(db))
+	http.HandleFunc("/api/items/update", handlers.UpdateItemDocReasonHandler(db))
 }

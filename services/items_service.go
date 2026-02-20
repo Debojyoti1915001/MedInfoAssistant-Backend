@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -78,4 +79,23 @@ func (s *ItemsService) GetPrescriptionItems(ctx context.Context, presID int64) (
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// UpdateItemDocReason updates only the docReason of an item by ID.
+func (s *ItemsService) UpdateItemDocReason(ctx context.Context, itemID int64, docReason string) (*models.Items, error) {
+	item := &models.Items{}
+	err := s.db.QueryRow(ctx,
+		`UPDATE items
+		 SET docReason = $2
+		 WHERE id = $1
+		 RETURNING id, created_at, name, type, aiReasons, docReason, presId`,
+		itemID, docReason,
+	).Scan(&item.ID, &item.CreatedAt, &item.Name, &item.Type, &item.AIReasons, &item.DocReason, &item.PresID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, pgx.ErrNoRows
+		}
+		return nil, err
+	}
+	return item, nil
 }

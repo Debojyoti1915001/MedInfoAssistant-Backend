@@ -24,6 +24,11 @@ type createPrescriptionResponse struct {
 	AIAnalysis   *models.AIResponse   `json:"aiAnalysis"`
 }
 
+type prescriptionWithItems struct {
+	Prescription *models.Prescription `json:"prescription"`
+	Items        []*models.Items      `json:"items"`
+}
+
 func persistAIItems(ctx context.Context, db *pgx.Conn, presID int64, aiResp *models.AIResponse) error {
 	if aiResp == nil {
 		return nil
@@ -299,5 +304,52 @@ func GetUserPrescriptionsHandler(db *pgx.Conn) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(prescriptions)
+	}
+}
+
+// GetUserPrescriptionsWithItemsHandler returns all prescriptions for a user with their items.
+func GetUserPrescriptionsWithItemsHandler(db *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		userIDStr := r.URL.Query().Get("userId")
+		if userIDStr == "" {
+			http.Error(w, "User ID is required", http.StatusBadRequest)
+			return
+		}
+
+		userID, err := strconv.ParseInt(userIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid User ID", http.StatusBadRequest)
+			return
+		}
+
+		presService := services.NewPrescriptionService(db)
+		prescriptions, err := presService.GetUserPrescriptions(context.Background(), userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		itemService := services.NewItemsService(db)
+		response := make([]*prescriptionWithItems, 0, len(prescriptions))
+		for _, pres := range prescriptions {
+			items, err := itemService.GetPrescriptionItems(context.Background(), pres.ID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			response = append(response, &prescriptionWithItems{
+				Prescription: pres,
+				Items:        items,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
 	}
 }
