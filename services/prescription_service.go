@@ -23,6 +23,12 @@ func (s *PrescriptionService) CreatePrescription(ctx context.Context, prescripti
 	return err
 }
 
+// UpdatePrescriptionLink updates only the storage link for a prescription.
+func (s *PrescriptionService) UpdatePrescriptionLink(ctx context.Context, presID int64, link string) error {
+	_, err := s.db.Exec(ctx, "UPDATE prescriptions SET link = $2 WHERE id = $1", presID, link)
+	return err
+}
+
 // GetPrescription retrieves a prescription by ID
 func (s *PrescriptionService) GetPrescription(ctx context.Context, presID int64) (*models.Prescription, error) {
 	prescription := &models.Prescription{}
