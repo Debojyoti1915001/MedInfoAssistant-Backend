@@ -31,6 +31,7 @@ func RegisterRoutes(db *pgx.Conn) {
 	http.HandleFunc("/api/prescriptions/create", handlers.CreatePrescriptionHandler(db))
 	http.HandleFunc("/api/prescriptions/get", handlers.GetPrescriptionHandler(db))
 	http.HandleFunc("/api/prescriptions/with-items", handlers.GetUserPrescriptionsWithItemsHandler(db))
+	http.HandleFunc("/api/doctors/prescriptions-with-items", handlers.GetDoctorPrescriptionsWithItemsHandler(db))
 
 	// Items routes
 	http.HandleFunc("/api/items", handlers.GetPrescriptionItemsHandler(db))

@@ -55,3 +55,24 @@ func (s *PrescriptionService) GetUserPrescriptions(ctx context.Context, userID i
 	}
 	return prescriptions, rows.Err()
 }
+
+// GetDoctorPrescriptions retrieves all prescriptions for a doctor
+func (s *PrescriptionService) GetDoctorPrescriptions(ctx context.Context, docID int64) ([]*models.Prescription, error) {
+	rows, err := s.db.Query(ctx,
+		"SELECT id, created_at, docId, userId, symptoms, link FROM prescriptions WHERE docId = $1 ORDER BY created_at DESC",
+		docID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prescriptions []*models.Prescription
+	for rows.Next() {
+		prescription := &models.Prescription{}
+		if err := rows.Scan(&prescription.ID, &prescription.CreatedAt, &prescription.DocID, &prescription.UserID, &prescription.Symptoms, &prescription.Link); err != nil {
+			return nil, err
+		}
+		prescriptions = append(prescriptions, prescription)
+	}
+	return prescriptions, rows.Err()
+}

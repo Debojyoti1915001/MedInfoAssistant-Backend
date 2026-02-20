@@ -353,3 +353,50 @@ func GetUserPrescriptionsWithItemsHandler(db *pgx.Conn) http.HandlerFunc {
 		json.NewEncoder(w).Encode(response)
 	}
 }
+
+// GetDoctorPrescriptionsWithItemsHandler returns all prescriptions for a doctor with their items.
+func GetDoctorPrescriptionsWithItemsHandler(db *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		docIDStr := r.URL.Query().Get("docId")
+		if docIDStr == "" {
+			http.Error(w, "Doctor ID is required", http.StatusBadRequest)
+			return
+		}
+
+		docID, err := strconv.ParseInt(docIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Doctor ID", http.StatusBadRequest)
+			return
+		}
+
+		presService := services.NewPrescriptionService(db)
+		prescriptions, err := presService.GetDoctorPrescriptions(context.Background(), docID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		itemService := services.NewItemsService(db)
+		response := make([]*prescriptionWithItems, 0, len(prescriptions))
+		for _, pres := range prescriptions {
+			items, err := itemService.GetPrescriptionItems(context.Background(), pres.ID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			response = append(response, &prescriptionWithItems{
+				Prescription: pres,
+				Items:        items,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
