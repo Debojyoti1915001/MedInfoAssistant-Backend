@@ -11,6 +11,24 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// CORS Middleware
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Handle preflight (OPTIONS request)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 
 	log.Println("Starting application...")
@@ -20,7 +38,7 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	// Get PORT from Render
+	// Get PORT (Render provides this automatically)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // fallback for local
@@ -52,8 +70,11 @@ func main() {
 
 	log.Printf("Server is running on port %s\n", port)
 
-	// Start server (ONLY ONCE)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	// Wrap mux with CORS middleware
+	handler := enableCORS(http.DefaultServeMux)
+
+	// Start server
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
