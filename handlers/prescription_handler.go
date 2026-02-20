@@ -87,10 +87,19 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// Parse multipart form (max 20MB in memory)
-		if err := r.ParseMultipartForm(20 << 20); err != nil {
+		const maxFileSize = 10 << 20
+		const maxRequestSize = maxFileSize + (1 << 20) // file + multipart overhead
+
+		// Enforce a hard request size limit before parsing multipart data.
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
+
+		// Parse multipart form with small in-memory budget; file parts spill to temp files.
+		if err := r.ParseMultipartForm(2 << 20); err != nil {
 			http.Error(w, "failed to parse multipart form: "+err.Error(), http.StatusBadRequest)
 			return
+		}
+		if r.MultipartForm != nil {
+			defer r.MultipartForm.RemoveAll()
 		}
 
 		// Read file from form field 'file'
@@ -101,9 +110,14 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		fileBytes, err := io.ReadAll(file)
+		limitedReader := io.LimitReader(file, maxFileSize+1)
+		fileBytes, err := io.ReadAll(limitedReader)
 		if err != nil {
 			http.Error(w, "failed to read file: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(fileBytes) > maxFileSize {
+			http.Error(w, "file too large (max 10MB)", http.StatusBadRequest)
 			return
 		}
 
@@ -144,13 +158,6 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 		allowedExts := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true, ".svg": true}
 		if !allowedExts[extLower] {
 			http.Error(w, "unsupported file extension", http.StatusBadRequest)
-			return
-		}
-
-		// Enforce max file size (e.g., 10MB)
-		const maxSize = 10 << 20
-		if len(fileBytes) > maxSize {
-			http.Error(w, "file too large (max 10MB)", http.StatusBadRequest)
 			return
 		}
 
