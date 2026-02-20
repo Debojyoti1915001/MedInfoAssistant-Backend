@@ -8,7 +8,16 @@ import (
 
 // InitDB initializes the database connection
 func InitDB(ctx context.Context, connString string) (*pgx.Conn, error) {
-	conn, err := pgx.Connect(ctx, connString)
+	connConfig, err := pgx.ParseConfig(connString)
+	if err != nil {
+		return nil, err
+	}
+
+	// Avoid server-side prepared statement cache collisions when a single
+	// connection is shared across concurrent requests.
+	connConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	conn, err := pgx.ConnectConfig(ctx, connConfig)
 	if err != nil {
 		return nil, err
 	}

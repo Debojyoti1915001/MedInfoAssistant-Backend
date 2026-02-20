@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Debojyoti1915001/MedInfoAssistant-Backend/models"
@@ -29,6 +30,7 @@ func persistAIItems(ctx context.Context, db *pgx.Conn, presID int64, aiResp *mod
 	}
 
 	itemService := services.NewItemsService(db)
+	items := make([]*models.Items, 0, len(aiResp.Tests)+len(aiResp.Medicines))
 
 	for testName, test := range aiResp.Tests {
 		name := test.Name
@@ -41,16 +43,13 @@ func persistAIItems(ctx context.Context, db *pgx.Conn, presID int64, aiResp *mod
 			return fmt.Errorf("failed to encode test reasons for %s: %w", name, err)
 		}
 
-		item := &models.Items{
+		items = append(items, &models.Items{
 			PresID:    presID,
 			Name:      name,
 			Type:      "test",
 			AIReasons: string(reasonsJSON),
 			DocReason: "",
-		}
-		if err := itemService.CreateItem(ctx, item); err != nil {
-			return fmt.Errorf("failed to store test item %s: %w", name, err)
-		}
+		})
 	}
 
 	for medicineName, medicine := range aiResp.Medicines {
@@ -64,18 +63,18 @@ func persistAIItems(ctx context.Context, db *pgx.Conn, presID int64, aiResp *mod
 			return fmt.Errorf("failed to encode medicine reasons for %s: %w", name, err)
 		}
 
-		item := &models.Items{
+		items = append(items, &models.Items{
 			PresID:    presID,
 			Name:      name,
 			Type:      "med",
 			AIReasons: string(reasonsJSON),
 			DocReason: "",
-		}
-		if err := itemService.CreateItem(ctx, item); err != nil {
-			return fmt.Errorf("failed to store medicine item %s: %w", name, err)
-		}
+		})
 	}
 
+	if err := itemService.CreateItemsBulk(ctx, items); err != nil {
+		return fmt.Errorf("failed to store AI items: %w", err)
+	}
 	return nil
 }
 
@@ -161,12 +160,6 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		publicURL, err := utils.UploadToSupabase(bucket, objectPath, fileBytes, contentType)
-		if err != nil {
-			http.Error(w, "failed to upload file: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
 		// Parse other form fields
 		symptoms := r.FormValue("symptoms")
 		userIDStr := r.FormValue("userId")
@@ -191,9 +184,30 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		aiResp, err := services.CallAIService(fileBytes, symptoms, doctor.Speciality)
-		if err != nil {
-			http.Error(w, "failed to analyze prescription: "+err.Error(), http.StatusBadGateway)
+		var (
+			publicURL string
+			aiResp    *models.AIResponse
+			uploadErr error
+			aiErr     error
+		)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			publicURL, uploadErr = utils.UploadToSupabase(bucket, objectPath, fileBytes, contentType)
+		}()
+		go func() {
+			defer wg.Done()
+			aiResp, aiErr = services.CallAIService(fileBytes, symptoms, doctor.Speciality)
+		}()
+		wg.Wait()
+
+		if uploadErr != nil {
+			http.Error(w, "failed to upload file: "+uploadErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		if aiErr != nil {
+			http.Error(w, "failed to analyze prescription: "+aiErr.Error(), http.StatusBadGateway)
 			return
 		}
 
