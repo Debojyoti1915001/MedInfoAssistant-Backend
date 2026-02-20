@@ -48,7 +48,7 @@ func CallAIService(fileBytes []byte, symptoms string, doctorSpeciality string) (
 	}
 
 	const maxAttempts = 3
-	const retryBackoff = 5 * time.Second
+	const retryBackoff = 15 * time.Second
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
