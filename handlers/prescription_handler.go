@@ -25,6 +25,15 @@ type prescriptionWithItems struct {
 	Items        []*models.Items      `json:"items"`
 }
 
+// createPrescriptionResponse keeps backward compatibility for clients expecting
+// plain prescription fields, while also supporting clients that expect the
+// with-items shape.
+type createPrescriptionResponse struct {
+	*models.Prescription
+	PrescriptionData *models.Prescription `json:"prescription"`
+	Items            []*models.Items      `json:"items"`
+}
+
 type updatePrescriptionSeenStatusRequest struct {
 	SeenByPatient bool `json:"seenByPatient"`
 }
@@ -230,7 +239,12 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(prescription)
+		resp := createPrescriptionResponse{
+			Prescription:    prescription,
+			PrescriptionData: prescription,
+			Items:           make([]*models.Items, 0),
+		}
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
