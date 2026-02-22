@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Debojyoti1915001/MedInfoAssistant-Backend/models"
@@ -19,11 +19,6 @@ import (
 	"github.com/Debojyoti1915001/MedInfoAssistant-Backend/utils"
 	"github.com/jackc/pgx/v5"
 )
-
-type createPrescriptionResponse struct {
-	Prescription *models.Prescription `json:"prescription"`
-	AIAnalysis   *models.AIResponse   `json:"aiAnalysis"`
-}
 
 type prescriptionWithItems struct {
 	Prescription *models.Prescription `json:"prescription"`
@@ -194,36 +189,9 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		var (
-			publicURL string
-			aiResp    *models.AIResponse
-			uploadErr error
-			aiErr     error
-		)
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			publicURL, uploadErr = utils.UploadToSupabase(bucket, objectPath, fileBytes, contentType)
-		}()
-		go func() {
-			defer wg.Done()
-			aiResp, aiErr = services.CallAIService(fileBytes, symptoms, doctor.Speciality)
-		}()
-		wg.Wait()
-
-		if uploadErr != nil {
-			http.Error(w, "failed to upload file: "+uploadErr.Error(), http.StatusInternalServerError)
-			return
-		}
-		if aiErr != nil {
-			http.Error(w, "failed to analyze prescription: "+aiErr.Error(), http.StatusBadGateway)
-			return
-		}
-
 		prescription := &models.Prescription{
 			Symptoms: symptoms,
-			Link:     publicURL,
+			Link:     "",
 			UserID:   userID,
 			DocID:    doctor.ID,
 		}
@@ -234,17 +202,35 @@ func CreatePrescriptionHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		if err := persistAIItems(context.Background(), db, prescription.ID, aiResp); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		presID := prescription.ID
+
+		// Upload image in background and attach the public link once available.
+		go func() {
+			publicURL, err := utils.UploadToSupabase(bucket, objectPath, fileBytes, contentType)
+			if err != nil {
+				log.Printf("async upload failed for prescription %d: %v", presID, err)
+				return
+			}
+			if err := presService.UpdatePrescriptionLink(context.Background(), presID, publicURL); err != nil {
+				log.Printf("failed to update prescription link for %d: %v", presID, err)
+			}
+		}()
+
+		// Run AI analysis in background and store generated items.
+		go func() {
+			aiResp, err := services.CallAIService(fileBytes, symptoms, doctor.Speciality)
+			if err != nil {
+				log.Printf("async AI analysis failed for prescription %d: %v", presID, err)
+				return
+			}
+			if err := persistAIItems(context.Background(), db, presID, aiResp); err != nil {
+				log.Printf("failed to persist AI items for prescription %d: %v", presID, err)
+			}
+		}()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(createPrescriptionResponse{
-			Prescription: prescription,
-			AIAnalysis:   aiResp,
-		})
+		json.NewEncoder(w).Encode(prescription)
 	}
 }
 

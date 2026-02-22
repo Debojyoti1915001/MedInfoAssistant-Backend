@@ -20,6 +20,8 @@ func enableCORS(next http.Handler) http.Handler {
 		// Allow only your frontend
 		if origin == "http://localhost:5173" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else if origin == "https://medinfoai-3f1s.onrender.com" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
