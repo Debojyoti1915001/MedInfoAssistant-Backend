@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +23,10 @@ import (
 type prescriptionWithItems struct {
 	Prescription *models.Prescription `json:"prescription"`
 	Items        []*models.Items      `json:"items"`
+}
+
+type updatePrescriptionSeenStatusRequest struct {
+	SeenByPatient bool `json:"seenByPatient"`
 }
 
 func persistAIItems(ctx context.Context, db *pgx.Conn, presID int64, aiResp *models.AIResponse) error {
@@ -384,5 +389,49 @@ func GetDoctorPrescriptionsWithItemsHandler(db *pgx.Conn) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// UpdatePrescriptionSeenStatusHandler updates seenByPatient for a specific prescription.
+// Query param: id
+// Body: {"seenByPatient": true}
+func UpdatePrescriptionSeenStatusHandler(db *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		idStr := r.URL.Query().Get("id")
+		if idStr == "" {
+			http.Error(w, "Prescription ID is required", http.StatusBadRequest)
+			return
+		}
+
+		presID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Prescription ID", http.StatusBadRequest)
+			return
+		}
+
+		var req updatePrescriptionSeenStatusRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		presService := services.NewPrescriptionService(db)
+		updatedPrescription, err := presService.UpdatePrescriptionSeenByPatient(context.Background(), presID, req.SeenByPatient)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "prescription not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(updatedPrescription)
 	}
 }
