@@ -67,7 +67,8 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn) error {
 		userId BIGINT,
 		docId BIGINT,
 		symptoms TEXT,
-		link TEXT
+		link TEXT,
+		seenByPatient BOOLEAN DEFAULT FALSE
 	);
 	`)
 
@@ -94,6 +95,7 @@ func RunMigrations(ctx context.Context, conn *pgx.Conn) error {
 		"ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS docId BIGINT",
 		"ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS symptoms TEXT",
 		"ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS link TEXT",
+		"ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS seenByPatient BOOLEAN DEFAULT FALSE",
 		"ALTER TABLE items ADD COLUMN IF NOT EXISTS presId BIGINT",
 		"ALTER TABLE items ADD COLUMN IF NOT EXISTS name TEXT",
 		"ALTER TABLE items ADD COLUMN IF NOT EXISTS type TEXT",
