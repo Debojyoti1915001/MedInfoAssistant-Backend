@@ -135,13 +135,10 @@ func UpdateItemDocReasonHandler(db *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		if strings.TrimSpace(req.DocReason) == "" {
-			http.Error(w, "docReason is required", http.StatusBadRequest)
-			return
-		}
+		docReason := strings.TrimSpace(req.DocReason)
 
 		itemService := services.NewItemsService(db)
-		updatedItem, err := itemService.UpdateItemDocReason(context.Background(), itemID, req.DocReason)
+		updatedItem, err := itemService.UpdateItemDocReason(context.Background(), itemID, docReason)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, "item not found", http.StatusNotFound)
